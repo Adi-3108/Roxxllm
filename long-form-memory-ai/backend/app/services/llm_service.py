@@ -1,76 +1,125 @@
-import openai
-from typing import List, Dict, Any, AsyncGenerator
+import httpx
+import json
+from typing import AsyncGenerator, List, Dict
 from app.config import settings
 
 
 class LLMService:
-    """Handles LLM interactions with memory injection."""
-    
     def __init__(self):
-        openai.api_key = settings.OPENAI_API_KEY
+        self.api_key = settings.OPENROUTER_API_KEY
+        self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
         self.model = settings.LLM_MODEL
-    
+
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:8000",
+            "X-Title": "LongFormMemoryAI",
+        }
+
     async def generate_response(
         self,
         messages: List[Dict[str, str]],
-        memory_context: str = "",
         stream: bool = False
-    ) -> AsyncGenerator[str, None]:
-        """Generate response with optional memory context."""
-        
-        # Build system prompt with memory
-        system_content = """You are a helpful AI assistant with long-term memory. 
-Use the provided context from previous conversations naturally without explicitly mentioning it unless necessary.
-Be concise, helpful, and maintain continuity with previous interactions."""
+    ) -> AsyncGenerator[Dict[str, str], None]:
 
-        if memory_context:
-            system_content += f"\n\n{memory_context}"
-        
-        # Prepare messages
-        api_messages = [{"role": "system", "content": system_content}]
-        api_messages.extend(messages)
-        
-        if stream:
-            response = await openai.ChatCompletion.acreate(
-                model=self.model,
-                messages=api_messages,
-                stream=True,
-                temperature=0.7,
-                max_tokens=1000
-            )
-            
-            async for chunk in response:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-        else:
-            response = await openai.ChatCompletion.acreate(
-                model=self.model,
-                messages=api_messages,
-                temperature=0.7,
-                max_tokens=1000
-            )
-            yield response.choices[0].message.content
-    
-    def build_conversation_messages(
-        self,
-        recent_history: List[Dict],
-        current_message: str,
-        max_turns: int = None
-    ) -> List[Dict[str, str]]:
-        """Build message list from history."""
-        if max_turns is None:
-            max_turns = settings.MAX_CONTEXT_TURNS
-        
-        messages = []
-        
-        # Add recent history (limited to prevent token overflow)
-        for msg in recent_history[-max_turns:]:
-            messages.append({
-                "role": msg['role'],
-                "content": msg['content']
-            })
-        
-        # Add current message
-        messages.append({"role": "user", "content": current_message})
-        
-        return messages
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": stream,
+        }
+
+        # ---------- DEBUG: REQUEST ----------
+        print("\n========== LLM REQUEST ==========")
+        print("URL:", f"{self.base_url}/chat/completions")
+        print("MODEL:", self.model)
+        print("STREAM:", stream)
+        print("PAYLOAD:")
+        print(json.dumps(payload, indent=2))
+        print("=================================\n")
+
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+
+                # ---------- STREAMING ----------
+                if stream:
+                    async with client.stream(
+                        "POST",
+                        f"{self.base_url}/chat/completions",
+                        headers=self.headers,
+                        json=payload,
+                    ) as response:
+
+                        print("HTTP STATUS:", response.status_code)
+
+                        async for line in response.aiter_lines():
+                            if not line:
+                                continue
+
+                            print("RAW STREAM:", line)
+
+                            if line.strip() == "data: [DONE]":
+                                print("STREAM DONE")
+                                break
+
+                            if not line.startswith("data:"):
+                                continue
+
+                            data = line.replace("data:", "").strip()
+
+                            try:
+                                chunk = json.loads(data)
+                            except Exception as e:
+                                print("STREAM JSON ERROR:", e)
+                                continue
+
+                            delta = (
+                                chunk.get("choices", [{}])[0]
+                                .get("delta", {})
+                                .get("content")
+                            )
+
+                            if delta:
+                                yield {
+                                    "type": "token",
+                                    "content": delta
+                                }
+
+                # ---------- NON-STREAMING ----------
+                else:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=self.headers,
+                        json=payload,
+                    )
+
+                    print("HTTP STATUS:", response.status_code)
+                    print("\n========== RAW RESPONSE ==========")
+                    print(response.text)
+                    print("=================================\n")
+
+                    response.raise_for_status()
+                    result = response.json()
+
+                    print("\n========== PARSED RESPONSE ==========")
+                    print(json.dumps(result, indent=2))
+                    print("====================================\n")
+
+                    text = (
+                        result.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content")
+                    )
+
+                    yield {
+                        "type": "final",
+                        "content": text or ""
+                    }
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield {
+                "type": "error",
+                "content": f"LLM failure: {str(e)}"
+            }

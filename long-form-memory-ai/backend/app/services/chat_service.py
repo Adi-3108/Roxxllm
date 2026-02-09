@@ -1,6 +1,5 @@
 from typing import List, Dict, Any, AsyncGenerator
 from fastapi import HTTPException
-
 from app.models.chat import Conversation, Message
 from app.services.llm_service import LLMService
 
@@ -9,7 +8,11 @@ class ChatService:
     def __init__(self):
         self.llm_service = LLMService()
 
-    async def create_conversation(self, user_id: str, title: str = None) -> Conversation:
+    async def create_conversation(
+        self,
+        user_id: str,
+        title: str = None
+    ) -> Conversation:
         conv = Conversation(
             user_id=user_id,
             title=title or "New Conversation"
@@ -23,6 +26,7 @@ class ChatService:
         user_id: str,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
+
         conv = await Conversation.get(conversation_id)
         if not conv or conv.user_id != user_id:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -41,7 +45,6 @@ class ChatService:
                 "content": m.content,
                 "turn_number": m.turn_number,
                 "created_at": m.created_at.isoformat(),
-                "active_memories": m.active_memories
             }
             for m in messages
         ]
@@ -54,14 +57,21 @@ class ChatService:
         stream: bool = False
     ) -> AsyncGenerator[Dict[str, Any], None]:
 
+        print("\n===== CHAT INPUT =====")
+        print("User:", user_id)
+        print("Conversation:", conversation_id)
+        print("Message:", content)
+        print("Stream:", stream)
+        print("======================\n")
+
         conv = await Conversation.get(conversation_id)
         if not conv or conv.user_id != user_id:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         conv.turn_count += 1
-        conv.updated_at = conv.updated_at
         await conv.save()
 
+        # Save user message
         user_msg = Message(
             conversation_id=conversation_id,
             turn_number=conv.turn_count,
@@ -70,6 +80,7 @@ class ChatService:
         )
         await user_msg.insert()
 
+        # Build history
         history = await Message.find(
             Message.conversation_id == conversation_id
         ).sort("+turn_number").to_list()
@@ -79,11 +90,36 @@ class ChatService:
             for m in history
         ]
 
+        print("\n===== CONTEXT TO LLM =====")
+        for m in messages:
+            print(m)
+        print("=========================\n")
+
         full_response = ""
-        async for chunk in self.llm_service.generate_response(messages, stream=stream):
-            full_response += chunk
-            if stream:
-                yield {"type": "chunk", "content": chunk}
+
+        async for event in self.llm_service.generate_response(
+            messages=messages,
+            stream=stream
+        ):
+            print("LLM EVENT:", event)
+
+            if event["type"] in ("token", "final"):
+                chunk = event.get("content", "")
+                full_response += chunk
+
+                if stream:
+                    yield {
+                        "type": "chunk",
+                        "content": chunk
+                    }
+
+            elif event["type"] == "error":
+                yield event
+                return
+
+        print("\n===== FINAL RESPONSE =====")
+        print(full_response)
+        print("==========================\n")
 
         assistant_msg = Message(
             conversation_id=conversation_id,
@@ -99,6 +135,6 @@ class ChatService:
                 "id": str(assistant_msg.id),
                 "content": full_response,
                 "turn_number": conv.turn_count,
-                "created_at": assistant_msg.created_at.isoformat()
+                "created_at": assistant_msg.created_at.isoformat(),
             }
         }

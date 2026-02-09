@@ -2,15 +2,20 @@ import json
 import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import openai
+from openai import AsyncOpenAI
 from app.config import settings
+
+client = AsyncOpenAI(
+    api_key=settings.OPENROUTER_API_KEY,
+    base_url=settings.OPENROUTER_BASE_URL,
+)
 
 
 class MemoryExtractor:
     """Extracts structured memories from conversation turns using LLM."""
     
     def __init__(self):
-        openai.api_key = settings.OPENAI_API_KEY
+        pass
         self.extraction_prompt = """You are a memory extraction system. Analyze the conversation and extract important information that should be remembered for future interactions.
 
 Extract memories in these categories:
@@ -56,7 +61,7 @@ Example:
         context = self._build_context(conversation_history, user_message, assistant_response)
         
         try:
-            response = await openai.ChatCompletion.acreate(
+            response = await client.chat.completions.create(
                 model=settings.LLM_MODEL,
                 messages=[
                     {"role": "system", "content": "You extract structured memories from conversations."},
@@ -67,6 +72,9 @@ Example:
             )
             
             content = response.choices[0].message.content.strip()
+            print("\n===== MEMORY EXTRACTOR RESPONSE =====")
+            print(content)
+            print("====================================\n")
             
             # Clean up JSON response
             content = re.sub(r'```json\s*', '', content)
