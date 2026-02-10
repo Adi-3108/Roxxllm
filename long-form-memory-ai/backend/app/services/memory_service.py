@@ -70,13 +70,16 @@ class MemoryService:
         user_id: str,
         memory_type: Optional[str] = None,
         limit: int = 100,
-        sort_by: str = "recency"  # "recency" or "importance"
+        sort_by: str = "recency",  # "recency", "importance", or "time_created"
+        hours_ago: Optional[int] = None  # Filter memories from last N hours
     ) -> List[Memory]:
         """
-        Get all active memories for a user, sorted by RECENCY (newest first) by default.
-        This ensures LATEST preferences are retrieved first.
+        Get all active memories for a user with enhanced sorting options.
+        Enhanced to consider both turn numbers and creation timestamps.
         """
-
+        from datetime import datetime, timedelta
+        
+        # Build base query
         query = Memory.find(
             Memory.user_id == user_id,
             Memory.is_active == True
@@ -84,12 +87,44 @@ class MemoryService:
 
         if memory_type:
             query = query.find(Memory.memory_type == memory_type)
+        
+        # Add time-based filtering if specified
+        if hours_ago is not None:
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours_ago)
+            query = query.find(Memory.created_at >= cutoff_time)
 
-        # Sort by recency (source_turn descending) or importance
-        if sort_by == "recency":
-            memories = await query.sort("-source_turn").limit(limit).to_list()
-        else:
+        # Enhanced sorting logic
+        if sort_by == "time_created":
+            # Sort by actual creation time (most recent first)
+            memories = await query.sort("-created_at").limit(limit).to_list()
+        elif sort_by == "recency":
+            # Hybrid sort: prioritize by creation time, then by turn number
+            # This ensures memories from recent conversations are included
+            memories = await query.to_list()  # Get all, then sort in Python for hybrid logic
+            
+            # Sort with hybrid scoring
+            def hybrid_sort_key(mem):
+                now = datetime.utcnow()
+                hours_old = (now - mem.created_at).total_seconds() / 3600
+                
+                # Recent memories (last 6 hours) get highest priority
+                if hours_old <= 6:
+                    time_score = 1000 - (hours_old * 100)  # Higher score for newer
+                else:
+                    time_score = 400 - min(hours_old * 2, 400)  # Gradual decay
+                
+                # Add turn-based score (lower penalty for older turns)
+                turn_score = max(0, 100 - mem.source_turn)
+                
+                return time_score + turn_score
+            
+            memories.sort(key=hybrid_sort_key, reverse=True)
+            memories = memories[:limit]
+        elif sort_by == "importance":
             memories = await query.sort("-importance_score").limit(limit).to_list()
+        else:
+            # Default to time_created for reliability
+            memories = await query.sort("-created_at").limit(limit).to_list()
             
         return memories
 
@@ -102,9 +137,10 @@ class MemoryService:
         memory_types: Optional[List[str]] = None
     ) -> List[Memory]:
         """
-        Simple keyword-based search for memories with recency prioritization.
-        Returns MongoDB Memory objects sorted by recency.
+        Enhanced memory search with time-aware retrieval.
+        Considers both creation time and turn numbers for comprehensive memory access.
         """
+        from datetime import datetime, timedelta
         
         query = Memory.find(
             Memory.user_id == user_id,
@@ -114,12 +150,13 @@ class MemoryService:
         if memory_types:
             query = query.find({"memory_type": {"$in": memory_types}})
         
-        # Get all active memories and sort by recency
-        memories = await query.sort("-source_turn").limit(top_k * 2).to_list()
+        # Get more memories to ensure we don't miss important ones
+        memories = await query.sort("-created_at").limit(top_k * 5).to_list()
         
-        # Simple relevance scoring based on keyword matching
+        # Enhanced relevance scoring with time-aware weighting
         scored_memories = []
         query_lower = query_text.lower()
+        now = datetime.utcnow()
         
         for mem in memories:
             score = 0.0
@@ -132,14 +169,38 @@ class MemoryService:
                 if len(word) > 2 and word in mem_text:
                     score += 1.0
             
-            # Add recency boost (more recent = higher score)
+            # TIME-AWARE RECENCY BOOST (NEW)
+            # Calculate hours since creation
+            hours_ago = (now - mem.created_at).total_seconds() / 3600
+            
+            # Strong boost for very recent memories (last 4 hours)
+            if hours_ago <= 4:
+                time_boost = 3.0 * (1 - hours_ago / 4)  # Linear decay from 3.0 to 0
+            # Moderate boost for memories from 4-24 hours ago
+            elif hours_ago <= 24:
+                time_boost = 1.0 * (1 - (hours_ago - 4) / 20)  # Linear decay from 1.0 to 0
+            # Small boost for memories from 1-7 days ago
+            elif hours_ago <= 168:  # 7 days
+                time_boost = 0.5 * (1 - (hours_ago - 24) / 144)  # Linear decay from 0.5 to 0
+            else:
+                time_boost = 0.0
+            
+            score += time_boost
+            
+            # Turn-based recency boost (for within same conversation)
             if current_turn > 0:
                 turns_ago = current_turn - mem.source_turn
-                recency_boost = max(0, 5 - (turns_ago / 10))  # Decay over time
-                score += recency_boost
+                if turns_ago >= 0:  # Only boost for memories from earlier or current turn
+                    turn_boost = max(0, 2.0 - (turns_ago / 10))
+                    score += turn_boost
             
-            # Add importance boost
+            # Importance boost
             score += mem.importance_score * 2
+            
+            # Access frequency boost (frequently accessed memories are important)
+            if mem.access_count > 0:
+                access_boost = min(1.0, mem.access_count * 0.1)
+                score += access_boost
             
             scored_memories.append((score, mem))
         

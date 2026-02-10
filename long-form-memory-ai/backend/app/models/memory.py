@@ -29,4 +29,17 @@ class Memory(Document):
                 [("user_id", ASCENDING), ("is_active", ASCENDING), ("importance_score", DESCENDING)],
                 name="user_active_importance_idx"
             ),
+            # NEW: Time-based indexes for optimized performance
+            IndexModel(
+                [("user_id", ASCENDING), ("is_active", ASCENDING), ("created_at", DESCENDING)],
+                name="user_active_time_idx"
+            ),
+            IndexModel(
+                [("user_id", ASCENDING), ("is_active", ASCENDING), ("memory_type", ASCENDING), ("created_at", DESCENDING)],
+                name="user_type_time_idx"
+            ),
+            IndexModel(
+                [("user_id", ASCENDING), ("is_active", ASCENDING), ("memory_type", ASCENDING), ("source_turn", DESCENDING)],
+                name="user_type_turn_idx"
+            ),
         ]
