@@ -1,6 +1,7 @@
-from beanie import Document
+from beanie import Document, Indexed
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
+from pymongo import IndexModel, ASCENDING, DESCENDING
 
 
 class Memory(Document):
@@ -23,3 +24,9 @@ class Memory(Document):
     
     class Settings:
         name = "memories"
+        indexes = [
+            IndexModel(
+                [("user_id", ASCENDING), ("is_active", ASCENDING), ("importance_score", DESCENDING)],
+                name="user_active_importance_idx"
+            ),
+        ]
