@@ -23,6 +23,18 @@ class ConversationCreate(BaseModel):
     title: Optional[str] = None
 
 
+@router.get("/conversations")
+async def get_conversations(
+    current_user: User = Depends(get_current_user_dependency),
+    limit: int = 50
+):
+    """Get all conversations for the current user."""
+    return await chat_service.get_user_conversations(
+        user_id=str(current_user.id),
+        limit=limit
+    )
+
+
 @router.post("/conversations")
 async def create_conversation(
     data: ConversationCreate,

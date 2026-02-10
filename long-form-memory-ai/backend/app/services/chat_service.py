@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, AsyncGenerator
+from datetime import datetime
 from fastapi import HTTPException
 from app.models.chat import Conversation, Message
 from app.services.llm_service import LLMService
@@ -19,6 +20,30 @@ class ChatService:
         )
         await conv.insert()
         return conv
+
+    async def get_user_conversations(
+        self,
+        user_id: str,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Get all conversations for a user."""
+        conversations = (
+            await Conversation.find(Conversation.user_id == user_id)
+            .sort("-created_at")
+            .limit(limit)
+            .to_list()
+        )
+        
+        return [
+            {
+                "id": str(conv.id),
+                "title": conv.title,
+                "created_at": conv.created_at.isoformat(),
+                "updated_at": conv.updated_at.isoformat() if conv.updated_at else conv.created_at.isoformat(),
+                "turn_count": conv.turn_count
+            }
+            for conv in conversations
+        ]
 
     async def get_conversation_history(
         self,
@@ -69,6 +94,7 @@ class ChatService:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         conv.turn_count += 1
+        conv.updated_at = datetime.utcnow()
         await conv.save()
 
         # Save user message
