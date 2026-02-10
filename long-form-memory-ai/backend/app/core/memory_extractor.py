@@ -16,27 +16,43 @@ class MemoryExtractor:
     
     def __init__(self):
         pass
-        self.extraction_prompt = """You are a memory extraction system. Analyze the conversation and extract important information that should be remembered for future interactions.
+        self.extraction_prompt = """You are a comprehensive memory extraction system. Extract ALL important information from the conversation that could be useful in future interactions. Be thorough and capture details that might seem minor but could be relevant later.
 
 Extract memories in these categories:
-1. **preference**: User likes, dislikes, choices (language, style, timing)
-2. **fact**: Personal information, demographics, important facts
-3. **entity**: Important people, places, organizations mentioned
-4. **commitment**: Promises, scheduled events, deadlines
+1. **preference**: User likes, dislikes, choices, favorites (language, style, timing, entertainment, food, etc.)
+2. **fact**: Personal information, demographics, background, education, work, family details
+3. **entity**: Important people, places, organizations, brands, specific items mentioned
+4. **commitment**: Promises, scheduled events, deadlines, plans, intentions
 5. **instruction**: Explicit instructions on how to behave or respond
-6. **constraint**: Limitations, restrictions, boundaries
+6. **constraint**: Limitations, restrictions, boundaries, things to avoid
+7. **habit**: Routines, patterns, regular behaviors (e.g., "I usually wake up at 7am")
+8. **opinion**: Strong feelings, beliefs, values, perspectives on topics
+9. **temporary_state**: Current situations, moods, ongoing projects (may be less permanent)
+10. **goal**: Aspirations, targets, things user wants to achieve
 
-Also extract GENERAL PREFERENCE RULES when the user expresses a broad pattern.
-Examples:
-- "In any anime, my favorite character is the main character" -> preference key: favorite_anime_character_type, value: main character
-- "I usually prefer vegetarian food" -> preference key: dietary_preference, value: vegetarian
+DETAILED EXTRACTION RULES:
+- Extract BOTH specific and general preferences
+- Capture numbers, quantities, time references
+- Note emotional reactions (likes, hates, loves, fears)
+- Remember context around preferences (e.g., "only on weekends", "when I'm stressed")
+- Extract relationships and social connections
+- Capture ANY pattern or routine the user mentions
+- Note professional/educational background details
+- Extract health information, dietary restrictions, allergies
+- Remember entertainment preferences in detail
+
+GENERAL PREFERENCE PATTERN EXAMPLES:
+- "In any anime, my favorite character is the main character" -> preference: favorite_anime_character_type = main character
+- "I usually prefer vegetarian food but eat meat on weekends" -> preference: dietary_preference = vegetarian, constraint: dietary_exception = meat_on_weekends
+- "I wake up at 7am on weekdays" -> habit: wake_up_weekday_time = 7am
+- "My sister works at Google" -> entity: sister_workplace = Google, fact: has_sister = yes
 
 For each memory found, provide:
 - type: One of the categories above
-- key: Short semantic identifier (e.g., "language_preference", "call_time")
-- value: The specific information to remember
-- confidence: 0.0 to 1.0 score
-- importance: 0.0 to 1.0 score (how critical this is)
+- key: Specific, semantic identifier (e.g., "favorite_movie_genre", "sister_name")
+- value: The exact information to remember (include numbers, names, specifics)
+- confidence: 0.0 to 1.0 score (how certain you are this is correct)
+- importance: 0.0 to 1.0 score (how critical this is for future conversations)
 
 Conversation:
 {conversation}
@@ -46,10 +62,17 @@ Example:
 [
   {{
     "type": "preference",
-    "key": "language",
+    "key": "language_preference",
     "value": "Kannada",
     "confidence": 0.95,
     "importance": 0.8
+  }},
+  {{
+    "type": "habit",
+    "key": "morning_routine",
+    "value": "wakes up at 7am on weekdays",
+    "confidence": 0.9,
+    "importance": 0.6
   }}
 ]"""
     
@@ -58,7 +81,8 @@ Example:
         user_message: str,
         assistant_response: str,
         turn_number: int,
-        conversation_history: Optional[List[Dict]] = None
+        conversation_history: Optional[List[Dict]] = None,
+        extraction_boost: float = 0.0
     ) -> List[Dict[str, Any]]:
         """Extract memories from a conversation turn."""
         
@@ -93,7 +117,21 @@ Example:
                 if self._validate_memory(mem):
                     mem['source_turn'] = turn_number
                     mem['extracted_at'] = datetime.utcnow().isoformat()
+                    
+                    # Apply extraction boost to importance
+                    if extraction_boost > 0:
+                        mem['importance'] = min(1.0, mem.get('importance', 0.5) + extraction_boost)
+                        print(f"   Applied extraction boost +{extraction_boost:.1f} to [{mem['type']}] {mem['key']}")
+                    
                     validated_memories.append(mem)
+            
+            # Special handling: If extraction was forced but nothing was found, try minimal extraction
+            if extraction_boost >= 1.5 and not validated_memories:
+                print("   🚨 HIGH PRIORITY EXTRACTION YIELDED NOTHING - ATTEMPTING MINIMAL EXTRACTION")
+                minimal_memories = await self._minimal_extraction(
+                    user_message, assistant_response, turn_number, extraction_boost
+                )
+                validated_memories.extend(minimal_memories)
             
             return validated_memories
             
@@ -125,26 +163,192 @@ Example:
         required = ['type', 'key', 'value', 'confidence', 'importance']
         return all(field in memory for field in required)
     
-    def should_extract(self, turn_number: int, user_message: Optional[str] = None) -> bool:
-        """Determine if we should run extraction on this turn."""
-        # Extract on specific turns to balance performance and coverage
-        # Turn 1 (initial preferences), then every 5 turns, and every 50th turn
-        if turn_number == 1 or turn_number % 5 == 0 or turn_number % 50 == 0:
-            return True
-
-        return self._has_memory_signal(user_message)
+    def should_extract(self, turn_number: int, user_message: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Enhanced extraction logic with multiple priority levels.
+        Returns detailed extraction decision with reasons.
+        """
+        if not user_message:
+            return {"should_extract": False, "reason": "no_message", "priority": "none"}
+        
+        result = {
+            "should_extract": False,
+            "reason": "",
+            "priority": "none",
+            "force_extraction": False,
+            "extraction_boost": 0.0
+        }
+        
+        message_lower = user_message.lower()
+        
+        # PRIORITY 1: EXPLICIT MEMORY COMMANDS (Highest Priority)
+        explicit_commands = ["remember", "don't forget", "this is important", "make a note", "keep in mind"]
+        if any(cmd in message_lower for cmd in explicit_commands):
+            result.update({
+                "should_extract": True,
+                "reason": "explicit_memory_command",
+                "priority": "critical",
+                "force_extraction": True,
+                "extraction_boost": 2.0
+            })
+            print(f"🚨 EXPLICIT MEMORY COMMAND DETECTED: '{user_message[:50]}...'")
+            return result
+        
+        # PRIORITY 2: HIGH-IMPORTANCE SIGNALS
+        importance_signals = [
+            "my name", "i am", "i'm", "call me", "you can call me",
+            "i work at", "i study at", "i go to", "i live in", "i am from",
+            "allergic to", "i have a", "my medical", "health condition",
+            "emergency contact", "important", "crucial", "critical"
+        ]
+        
+        if any(signal in message_lower for signal in importance_signals):
+            result.update({
+                "should_extract": True,
+                "reason": "high_importance_signal",
+                "priority": "high",
+                "extraction_boost": 1.5
+            })
+            print(f"⚡ HIGH IMPORTANCE SIGNAL: '{user_message[:50]}...'")
+            return result
+        
+        # PRIORITY 3: REGULAR MEMORY SIGNALS
+        if self._has_memory_signal(user_message):
+            result.update({
+                "should_extract": True,
+                "reason": "memory_signal_detected",
+                "priority": "medium",
+                "extraction_boost": 1.0
+            })
+            return result
+        
+        # PRIORITY 4: FREQUENCY-BASED EXTRACTION (Guaranteed Coverage)
+        # Much more frequent: Turn 1, every 2 turns, and every 10th turn
+        if turn_number == 1 or turn_number % 2 == 0 or turn_number % 10 == 0:
+            result.update({
+                "should_extract": True,
+                "reason": "frequency_based",
+                "priority": "low",
+                "extraction_boost": 0.5
+            })
+            print(f"🔄 FREQUENCY EXTRACTION: Turn {turn_number}")
+            return result
+        
+        # PRIORITY 5: MEDIUM CONFIDENCE FALLBACK (Catch-all)
+        # Extract if message is longer than 20 words and contains personal pronouns
+        words = user_message.split()
+        if len(words) >= 20 and any(pronoun in message_lower for pronoun in ["i", "my", "me", "mine"]):
+            result.update({
+                "should_extract": True,
+                "reason": "fallback_heuristic",
+                "priority": "fallback",
+                "extraction_boost": 0.3
+            })
+            print(f"🎯 FALLBACK EXTRACTION: Turn {turn_number} ({len(words)} words)")
+            return result
+        
+        result["reason"] = "no_memory_signal"
+        return result
 
     def _has_memory_signal(self, user_message: Optional[str]) -> bool:
-        """Lightweight heuristic to detect messages likely containing memories."""
+        """Enhanced heuristic to detect messages likely containing memories."""
         if not user_message:
             return False
 
         message = user_message.lower()
+        
+        # Expanded signal list for better memory capture
         signals = [
+            # Personal identity
             "my name", "i am", "i'm", "call me", "you can call me",
-            "i go to", "i study", "i work", "i live", "i am from",
-            "my favorite", "i like", "i love", "i hate", "i prefer",
-            "language", "speak", "remember", "my birthday", "my age"
+            # Location and background  
+            "i go to", "i study", "i work", "i live", "i am from", "i was born",
+            # Preferences (expanded)
+            "my favorite", "i like", "i love", "i hate", "i prefer", "i enjoy",
+            "i don't like", "i dislike", "i'm not a fan", "not my favorite",
+            # Demographics
+            "language", "speak", "remember", "my birthday", "my age", "years old",
+            # Lifestyle and habits
+            "i usually", "i always", "i never", "i often", "i sometimes",
+            "my routine", "my schedule", "i wake up", "i go to bed",
+            # Relationships and social
+            "my friend", "my family", "my brother", "my sister", "my parents",
+            "my partner", "my boyfriend", "my girlfriend",
+            # Interests and hobbies
+            "i play", "i watch", "i read", "i listen", "collect", "hobby",
+            "i'm interested in", "passion", "my hobby",
+            # Food and dietary
+            "i eat", "i cook", "vegetarian", "vegan", "diet", "allergic",
+            # Opinions and feelings
+            "i think", "i feel", "i believe", "in my opinion", "to me",
+            # Temporary states and plans
+            "i'm planning", "i will", "i'm going to", "i want", "i need",
+            "looking forward", "excited about", "worried about"
         ]
 
         return any(signal in message for signal in signals)
+
+    async def _minimal_extraction(
+        self,
+        user_message: str,
+        assistant_response: str,
+        turn_number: int,
+        extraction_boost: float
+    ) -> List[Dict[str, Any]]:
+        """
+        Minimal extraction as a last resort for high-priority cases.
+        Only extracts the most obvious and important information.
+        """
+        message_lower = user_message.lower()
+        minimal_memories = []
+        
+        # Basic pattern matching for critical information
+        import re
+        
+        patterns = [
+            # Name
+            (r"my name is (\w+)", "fact", "name"),
+            (r"call me (\w+)", "preference", "preferred_name"),
+            (r"i'm (\w+)", "fact", "stated_name"),
+            
+            # Work/Study
+            (r"i work at ([\w\s]+)", "fact", "workplace"),
+            (r"i study at ([\w\s]+)", "fact", "school"),
+            (r"i go to ([\w\s]+)", "fact", "institution"),
+            
+            # Location
+            (r"i live in ([\w\s]+)", "fact", "location"),
+            (r"from ([\w\s]+)", "fact", "origin"),
+            
+            # Age
+            (r"(\d+) years? old", "fact", "age"),
+            (r"age (\d+)", "fact", "age"),
+            
+            # Strong preferences
+            (r"i love ([\w\s]+)", "preference", "loves"),
+            (r"i hate ([\w\s]+)", "preference", "hates"),
+            (r"favorite ([\w\s]+) is ([\w\s]+)", "preference", lambda m: f"favorite_{m.group(1)}"),
+        ]
+        
+        for pattern, mem_type, key in patterns:
+            matches = re.findall(pattern, message_lower)
+            if matches:
+                for match in matches:
+                    # Handle dynamic keys
+                    if callable(key):
+                        key = key(match)
+                    elif isinstance(match, tuple):
+                        key = key
+                        match = match[0]
+                    
+                    memory = {
+                        "type": mem_type,
+                        "key": key,
+                        "value": match.strip(),
+                        "confidence": 0.8,  # High confidence for pattern matching
+                        "importance": min(1.0, 0.7 + extraction_boost),  # Boost based on priority
+                    }
+                    minimal_memories.append(memory)
+                    print(f"   🎯 Minimal extraction: [{mem_type}] {key} = {match}")
+        
+        return minimal_memories
