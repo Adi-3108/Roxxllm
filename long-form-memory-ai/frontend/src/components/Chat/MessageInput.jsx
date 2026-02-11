@@ -8,18 +8,23 @@ const MessageInput = ({ onSend, isLoading }) => {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
     }
   }, [message])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (message.trim() && !isLoading) {
-      onSend(message.trim())
+    const trimmed = message.trim()
+    if (!trimmed || isLoading) return
+
+    try {
+      await onSend(trimmed)
       setMessage('')
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
       }
+    } catch (err) {
+      console.error('Message send failed:', err)
     }
   }
 
@@ -31,32 +36,30 @@ const MessageInput = ({ onSend, isLoading }) => {
   }
 
   return (
-    <div className="border-t border-gray-200 bg-white p-4">
-      <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-        <div className="relative flex items-end space-x-2">
+    <footer className="px-3 sm:px-5 pb-4 sm:pb-5 pt-3">
+      <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
+        <div className="surface-panel rounded-3xl p-2 sm:p-3 flex items-end gap-2">
           <textarea
             ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message... (Shift+Enter for new line)"
-            className="flex-1 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-none min-h-[44px] max-h-32"
+            placeholder="Type your message..."
+            className="input-field px-4 py-3 resize-none min-h-[50px] max-h-36 bg-transparent border-0 shadow-none focus:shadow-none"
             rows={1}
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={!message.trim() || isLoading}
-            className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="accent-button h-11 w-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            aria-label="Send message"
           >
             <PaperAirplaneIcon className="h-5 w-5" />
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-2 text-center">
-          AI remembers your preferences and facts across thousands of turns
-        </p>
       </form>
-    </div>
+    </footer>
   )
 }
 

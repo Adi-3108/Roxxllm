@@ -1,69 +1,137 @@
 import React from 'react'
-import { PlusIcon, ChatBubbleLeftIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import {
+  PlusIcon,
+  ChatBubbleLeftRightIcon,
+  TrashIcon,
+  XMarkIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+  SparklesIcon,
+  UserCircleIcon
+} from '@heroicons/react/24/outline'
 
-const Sidebar = ({ conversations, currentConversation, onSelectConversation, onNewChat, onDeleteConversation }) => {
+const Sidebar = ({
+  conversations,
+  currentConversation,
+  onSelectConversation,
+  onNewChat,
+  onDeleteConversation,
+  onCloseMobile,
+  onToggleCollapse,
+  collapsed = false,
+  className = '',
+  user
+}) => {
+  const username = user?.username || 'Guest'
+
   return (
-    <div className="w-64 bg-gray-900 text-white flex flex-col h-full">
-      <div className="p-4">
+    <aside className={`flex flex-col h-full surface-panel ${className}`}>
+      <div className="p-3 md:p-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="h-10 w-10 rounded-xl surface-strong flex items-center justify-center">
+            <SparklesIcon className="h-5 w-5 text-[var(--accent)]" />
+          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <p className="text-base font-semibold truncate">Memory</p>
+              <p className="text-xs text-muted uppercase tracking-wider">Conversations</p>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onToggleCollapse}
+            className="neutral-button p-2 hidden lg:inline-flex"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <ChevronDoubleRightIcon className="h-4 w-4" />
+            ) : (
+              <ChevronDoubleLeftIcon className="h-4 w-4" />
+            )}
+          </button>
+          <button
+            onClick={onCloseMobile}
+            className="neutral-button p-2 lg:hidden"
+            aria-label="Close sidebar"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="px-3 md:px-4 pb-3 md:pb-4">
         <button
           onClick={onNewChat}
-          className="w-full flex items-center justify-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg px-4 py-3 transition-colors"
+          className="accent-button w-full flex items-center justify-center gap-2 px-4 py-3"
+          title="Start a new conversation"
         >
           <PlusIcon className="h-5 w-5" />
-          <span>New Chat</span>
+          {!collapsed && <span className="font-medium">New Chat</span>}
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 space-y-1">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
-          Recent Conversations
-        </div>
+      <div className="flex-1 overflow-y-auto soft-scroll px-2 md:px-3 space-y-1.5">
+        {!collapsed && (
+          <div className="px-2 py-1 text-xs font-semibold text-muted uppercase tracking-[0.16em]">
+            Your Chats
+          </div>
+        )}
         {conversations.map((conv) => (
           <div
             key={conv.id}
-            className={`w-full flex items-center space-x-3 px-3 py-3 rounded-lg transition-colors group ${
-              currentConversation?.id === conv.id
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-300 hover:bg-gray-800'
+            className={`sidebar-item group p-2 ${
+              currentConversation?.id === conv.id ? 'sidebar-item-active' : ''
             }`}
+            title={collapsed ? conv.title : undefined}
           >
-            <button
-              onClick={() => onSelectConversation(conv)}
-              className="flex items-center space-x-3 flex-1 min-w-0"
-            >
-              <ChatBubbleLeftIcon className="h-5 w-5 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {conv.title}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {conv.turn_count || 0} turns
-                </p>
-              </div>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                if (window.confirm('Delete this conversation and all its memories?')) {
-                  onDeleteConversation(conv.id)
-                }
-              }}
-              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded transition-all"
-              title="Delete conversation and all memories"
-            >
-              <TrashIcon className="h-4 w-4" />
-            </button>
+            <div className="w-full flex items-center gap-2 min-w-0">
+              <button
+                onClick={() => onSelectConversation(conv)}
+                className="w-full flex items-center gap-2 min-w-0"
+              >
+                <div className="h-9 w-9 rounded-lg surface-strong flex items-center justify-center shrink-0">
+                  <ChatBubbleLeftRightIcon className="h-4 w-4 text-[var(--accent)]" />
+                </div>
+                {!collapsed && (
+                  <div className="flex-1 min-w-0 text-left">
+                    <p className="text-sm font-medium truncate">{conv.title}</p>
+                    <p className="text-xs text-muted">{conv.turn_count || 0} turns</p>
+                  </div>
+                )}
+              </button>
+              {!collapsed && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (window.confirm('Delete this conversation and all its memories?')) {
+                      onDeleteConversation(conv.id)
+                    }
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-muted hover:text-red-400"
+                  title="Delete conversation and all memories"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="p-4 border-t border-gray-800">
-        <div className="text-xs text-gray-400">
-          <p>Long-Form Memory System</p>
-          <p>Retains context across 1000+ turns</p>
+      <div className="p-3 md:p-4 border-t">
+        <div className={`surface-strong rounded-xl p-3 flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}>
+          <UserCircleIcon className="h-6 w-6 text-[var(--accent)] shrink-0" />
+          {!collapsed && (
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{username}</p>
+              <p className="text-xs text-muted">Signed in</p>
+            </div>
+          )}
+          {collapsed && <span className="text-xs font-semibold truncate max-w-10">{username}</span>}
         </div>
       </div>
-    </div>
+    </aside>
   )
 }
 

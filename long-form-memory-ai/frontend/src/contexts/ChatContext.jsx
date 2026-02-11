@@ -1,4 +1,5 @@
-import React, { createContext, useState, useCallback, useRef } from 'react'
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useState, useCallback } from 'react'
 import { chatService } from '../services/chatService'
 
 export const ChatContext = createContext(null)
@@ -9,7 +10,6 @@ export const ChatProvider = ({ children }) => {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [streamingMessage, setStreamingMessage] = useState('')
-  const abortControllerRef = useRef(null)
 
   const loadConversations = useCallback(async () => {
     try {
@@ -70,9 +70,13 @@ export const ChatProvider = ({ children }) => {
   }, [currentConversation])
 
   const sendMessage = useCallback(async (content, stream = true) => {
-    if (!currentConversation) {
-      await createConversation()
+    let activeConversation = currentConversation
+    if (!activeConversation) {
+      activeConversation = await createConversation()
     }
+
+    const conversationId = activeConversation.id
+    const nextTurnNumber = (activeConversation.turn_count || 0) + 1
 
     setIsLoading(true)
     setStreamingMessage('')
@@ -82,21 +86,38 @@ export const ChatProvider = ({ children }) => {
       id: Date.now(),
       role: 'user',
       content,
-      turn_number: messages.length + 1,
+      turn_number: nextTurnNumber,
       created_at: new Date().toISOString()
     }
     setMessages(prev => [...prev, tempUserMessage])
 
     try {
       if (stream) {
+        let chunkBuffer = ''
+        let rafPending = false
+
+        const flushChunks = () => {
+          if (chunkBuffer) {
+            const buffered = chunkBuffer
+            chunkBuffer = ''
+            setStreamingMessage(prev => prev + buffered)
+          }
+          rafPending = false
+        }
+
         // Streaming response
         const response = await chatService.sendMessageStream(
-          currentConversation.id,
+          conversationId,
           content,
           (chunk) => {
-            setStreamingMessage(prev => prev + chunk)
+            chunkBuffer += chunk
+            if (!rafPending) {
+              rafPending = true
+              requestAnimationFrame(flushChunks)
+            }
           }
         )
+        flushChunks()
 
         // Add final assistant message
         setMessages(prev => [...prev, {
@@ -111,7 +132,7 @@ export const ChatProvider = ({ children }) => {
         setStreamingMessage('')
       } else {
         // Non-streaming response
-        const response = await chatService.sendMessage(currentConversation.id, content)
+        const response = await chatService.sendMessage(conversationId, content)
         setMessages(prev => [...prev, {
           id: response.message.id,
           role: 'assistant',
@@ -123,19 +144,27 @@ export const ChatProvider = ({ children }) => {
       }
 
       // Update conversation turn count
-      setCurrentConversation(prev => ({
-        ...prev,
-        turn_count: (prev.turn_count || 0) + 1
-      }))
+      setCurrentConversation(prev => {
+        if (!prev || prev.id !== conversationId) return prev
+        return {
+          ...prev,
+          turn_count: (prev.turn_count || 0) + 1
+        }
+      })
 
       // Update conversation in the list
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === currentConversation.id 
+      setConversations(prev => {
+        const exists = prev.some(conv => conv.id === conversationId)
+        if (!exists) {
+          return [{ ...activeConversation, turn_count: 1 }, ...prev]
+        }
+
+        return prev.map(conv =>
+          conv.id === conversationId
             ? { ...conv, turn_count: (conv.turn_count || 0) + 1 }
             : conv
         )
-      )
+      })
 
     } catch (err) {
       console.error('Failed to send message:', err)
@@ -145,7 +174,7 @@ export const ChatProvider = ({ children }) => {
     } finally {
       setIsLoading(false)
     }
-  }, [currentConversation, messages.length, createConversation])
+  }, [currentConversation, createConversation])
 
   const value = {
     conversations,

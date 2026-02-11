@@ -1,22 +1,206 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
-
 @layer base {
+  :root {
+    --radius: 14px;
+    --shadow-soft: 0 16px 48px rgba(6, 12, 29, 0.12);
+    --bg-app: #f4f7fb;
+    --bg-app-grad-1: rgba(91, 152, 255, 0.16);
+    --bg-app-grad-2: rgba(36, 49, 73, 0.08);
+    --panel: #ffffffcc;
+    --panel-strong: #ffffff;
+    --panel-deep: #eff3f9;
+    --border-soft: #d8e2ef;
+    --text-primary: #0f1728;
+    --text-secondary: #566173;
+    --text-muted: #7a869b;
+    --accent: #0e7aff;
+    --accent-strong: #0a63cf;
+    --accent-soft: rgba(14, 122, 255, 0.12);
+    --success: #16a34a;
+    --danger: #dc2626;
+    --overlay: rgba(2, 7, 18, 0.45);
+  }
+
+  :root[data-theme='dark'] {
+    --shadow-soft: 0 20px 54px rgba(0, 0, 0, 0.45);
+    --bg-app: #060c1a;
+    --bg-app-grad-1: rgba(24, 64, 130, 0.44);
+    --bg-app-grad-2: rgba(7, 17, 39, 0.6);
+    --panel: rgba(11, 19, 36, 0.78);
+    --panel-strong: #0f1b34;
+    --panel-deep: #0a1428;
+    --border-soft: rgba(119, 141, 181, 0.25);
+    --text-primary: #ecf1fb;
+    --text-secondary: #b8c5df;
+    --text-muted: #8695b3;
+    --accent: #24a2ff;
+    --accent-strong: #0e7ad5;
+    --accent-soft: rgba(36, 162, 255, 0.16);
+    --success: #31d06f;
+    --danger: #f87171;
+    --overlay: rgba(2, 6, 16, 0.72);
+  }
+
+  * {
+    border-color: var(--border-soft);
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    font-family: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, sans-serif;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Sora", "IBM Plex Sans", sans-serif;
+    letter-spacing: -0.02em;
   }
 }
 
 @layer components {
-  .btn-primary {
-    @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+  .app-shell {
+    background:
+      radial-gradient(840px 380px at 36% 0%, var(--bg-app-grad-1), transparent 70%),
+      radial-gradient(700px 420px at 85% 10%, var(--bg-app-grad-2), transparent 74%),
+      var(--bg-app);
   }
-  
-  .btn-secondary {
-    @apply px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 font-medium;
+
+  .surface-panel {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(14px);
   }
-  
+
+  .surface-strong {
+    background: var(--panel-strong);
+    border: 1px solid var(--border-soft);
+  }
+
+  .surface-deep {
+    background: var(--panel-deep);
+    border: 1px solid var(--border-soft);
+  }
+
+  .text-secondary {
+    color: var(--text-secondary);
+  }
+
+  .text-muted {
+    color: var(--text-muted);
+  }
+
+  .accent-button {
+    background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+    color: #fff;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .accent-button:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+  }
+
+  .neutral-button {
+    background: color-mix(in srgb, var(--panel-strong) 86%, transparent);
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .neutral-button:hover {
+    background: color-mix(in srgb, var(--panel-strong) 94%, transparent);
+  }
+
   .input-field {
-    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all duration-200;
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+  }
+
+  .input-field::placeholder {
+    color: var(--text-muted);
+  }
+
+  .input-field:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border-soft));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .sidebar-item {
+    border-radius: 12px;
+    border: 1px solid transparent;
+    transition: all 0.18s ease;
+  }
+
+  .sidebar-item:hover {
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border-soft));
+    background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel-strong));
+  }
+
+  .sidebar-item-active {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-soft));
+    background: color-mix(in srgb, var(--accent-soft) 66%, var(--panel-strong));
+  }
+
+  .message-user {
+    border-left: 4px solid var(--accent);
+    background: color-mix(in srgb, var(--accent-soft) 60%, var(--panel-strong));
+  }
+
+  .message-assistant {
+    border-left: 4px solid color-mix(in srgb, var(--text-muted) 50%, transparent);
+    background: color-mix(in srgb, var(--panel-strong) 92%, transparent);
+  }
+
+  .soft-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .soft-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@layer utilities {
+  .fade-in-up {
+    animation: fadeInUp 0.28s ease both;
+  }
+
+  .glow-ring {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 36%, transparent), 0 0 36px color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up {
+    animation: none !important;
   }
 }

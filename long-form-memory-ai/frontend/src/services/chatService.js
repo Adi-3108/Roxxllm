@@ -39,21 +39,27 @@ export const chatService = {
       })
     })
 
+    if (!response.ok || !response.body) {
+      throw new Error(`Streaming request failed with status ${response.status}`)
+    }
+
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let fullMessage = ''
     let finalData = null
+    let pending = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
-      const chunk = decoder.decode(value)
-      const lines = chunk.split('\n')
+      pending += decoder.decode(value, { stream: true })
+      const lines = pending.split('\n')
+      pending = lines.pop() || ''
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          const data = line.slice(6)
+          const data = line.slice(6).trim()
           if (data === '[DONE]') continue
           
           try {
@@ -67,6 +73,20 @@ export const chatService = {
           } catch (e) {
             console.error('Parse error:', e)
           }
+        }
+      }
+    }
+
+    if (pending.startsWith('data: ')) {
+      const data = pending.slice(6).trim()
+      if (data && data !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'complete') {
+            finalData = parsed
+          }
+        } catch (e) {
+          console.error('Parse error:', e)
         }
       }
     }

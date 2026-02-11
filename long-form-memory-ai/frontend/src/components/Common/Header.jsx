@@ -7,26 +7,26 @@ const Header = () => {
   const { user, logout } = useAuth()
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <header className="sticky top-0 z-50 border-b border-neutral-800 bg-neutral-900/95">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
             <Link to="/chat" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">M</span>
+              <div className="w-9 h-9 rounded-md flex items-center justify-center bg-neutral-800 border border-neutral-700">
+                <span className="text-neutral-100 font-bold text-lg">M</span>
               </div>
-              <span className="text-xl font-bold text-gray-900">MemoryAI</span>
+              <span className="text-xl font-bold text-neutral-100">MemoryAI</span>
             </Link>
           </div>
 
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <div className="flex items-center space-x-2 text-sm text-neutral-300">
               <UserCircleIcon className="h-5 w-5" />
               <span>{user?.username}</span>
             </div>
             <button
               onClick={logout}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-md transition-colors"
               title="Logout"
             >
               <ArrowRightOnRectangleIcon className="h-5 w-5" />

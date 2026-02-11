@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useState, useEffect, useCallback } from 'react'
 import { authService } from '../services/authService'
 
@@ -21,7 +22,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const userData = await authService.getMe()
       setUser(userData)
-    } catch (err) {
+    } catch {
       localStorage.removeItem('token')
     } finally {
       setLoading(false)

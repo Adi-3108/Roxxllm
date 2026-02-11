@@ -1,77 +1,79 @@
 import React from 'react'
-import { UserCircleIcon, CpuChipIcon } from '@heroicons/react/24/solid'
+import { UserCircleIcon, CpuChipIcon, CommandLineIcon } from '@heroicons/react/24/solid'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-const MessageList = ({ messages, streamingMessage, isLoading }) => {
+const MessageList = ({ messages, streamingMessage, isLoading, scrollContainerRef }) => {
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-4">
+    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto soft-scroll px-3 sm:px-5 py-5">
       {messages.length === 0 && !streamingMessage && (
-        <div className="flex flex-col items-center justify-center h-full text-gray-400">
-          <CpuChipIcon className="h-16 w-16 mb-4 text-primary-200" />
-          <p className="text-lg font-medium">Start a conversation</p>
-          <p className="text-sm">Your AI assistant remembers context across 1000+ turns</p>
+        <div className="h-full flex items-center justify-center px-4">
+          <div className="max-w-2xl w-full surface-panel rounded-3xl p-8 sm:p-12 text-center fade-in-up">
+            <div className="h-16 w-16 mx-auto rounded-2xl surface-strong flex items-center justify-center glow-ring">
+              <CommandLineIcon className="h-8 w-8 text-[var(--accent)]" />
+            </div>
+            <h2 className="mt-6 text-3xl sm:text-5xl font-semibold">Welcome to the chat box</h2>
+            <p className="mt-4 text-base sm:text-xl text-secondary">
+              Start a conversation and I will remember what matters.
+            </p>
+          </div>
         </div>
       )}
 
-      {messages.map((message, index) => (
-        <div
-          key={message.id || index}
-          className={`max-w-3xl mx-auto p-4 rounded-lg shadow-sm ${
-            message.role === 'user' 
-              ? 'bg-primary-50 border-l-4 border-primary-500' 
-              : 'bg-white border-l-4 border-gray-300'
-          }`}
-        >
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0">
-              {message.role === 'user' ? (
-                <UserCircleIcon className="h-8 w-8 text-primary-600" />
-              ) : (
-                <CpuChipIcon className="h-8 w-8 text-gray-600" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-gray-900 capitalize">
-                  {message.role === 'user' ? 'You' : 'Assistant'}
-                </span>
-                <span className="text-xs text-gray-500">
-                  Turn {message.turn_number}
-                </span>
+      <div className="max-w-5xl mx-auto space-y-4">
+        {messages.map((message, index) => (
+          <article
+            key={message.id || index}
+            className={`surface-panel rounded-2xl p-4 sm:p-5 fade-in-up ${
+              message.role === 'user' ? 'message-user' : 'message-assistant'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div className="shrink-0">
+                {message.role === 'user' ? (
+                  <UserCircleIcon className="h-8 w-8 text-[var(--accent)]" />
+                ) : (
+                  <CpuChipIcon className="h-8 w-8 text-secondary" />
+                )}
               </div>
-              <div className="prose prose-sm max-w-none text-gray-800">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {message.content}
-                </ReactMarkdown>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-sm font-semibold">
+                    {message.role === 'user' ? 'You' : 'Assistant'}
+                  </span>
+                  <span className="text-xs text-muted">Turn {message.turn_number}</span>
+                </div>
+                <div className="prose prose-sm sm:prose-base max-w-none text-[var(--text-primary)] prose-headings:text-[var(--text-primary)] prose-strong:text-[var(--text-primary)] prose-p:text-[var(--text-primary)] prose-li:text-[var(--text-primary)] prose-code:text-[var(--text-primary)]">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      ))}
+          </article>
+        ))}
 
-      {/* Streaming message */}
-      {streamingMessage && (
-        <div className="max-w-3xl mx-auto p-4 bg-white border-l-4 border-gray-300 rounded-lg shadow-sm">
-          <div className="flex items-start space-x-3">
-            <CpuChipIcon className="h-8 w-8 text-gray-600 flex-shrink-0" />
-            <div className="flex-1">
-              <div className="prose prose-sm max-w-none text-gray-800">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {streamingMessage && (
+          <article className="surface-panel rounded-2xl p-4 sm:p-5 message-assistant fade-in-up">
+            <div className="flex items-start gap-3">
+              <CpuChipIcon className="h-8 w-8 text-secondary shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold mb-1.5">Assistant</div>
+                <div className="whitespace-pre-wrap leading-7 text-[var(--text-primary)]">
                   {streamingMessage}
-                </ReactMarkdown>
+                  <span className="inline-block h-5 w-2 ml-1 align-middle bg-[var(--accent)] animate-pulse rounded-sm" />
+                </div>
               </div>
-              <span className="inline-block w-2 h-4 bg-primary-500 ml-1 animate-pulse"></span>
             </div>
-          </div>
-        </div>
-      )}
+          </article>
+        )}
 
-      {isLoading && !streamingMessage && (
-        <div className="flex items-center justify-center py-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-        </div>
-      )}
+        {isLoading && !streamingMessage && (
+          <div className="py-8 flex items-center justify-center">
+            <div className="h-8 w-8 rounded-full border-2 border-[var(--border-soft)] border-t-[var(--accent)] animate-spin" />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
