@@ -7,4 +7,14 @@ export default defineConfig({
   plugins: [react(),
     tailwindcss()
   ],
+  preview: {
+    allowedHosts: ['roxxllm-1.onrender.com', 'localhost', '127.0.0.1']
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: undefined
+      }
+    }
+  }
 })
