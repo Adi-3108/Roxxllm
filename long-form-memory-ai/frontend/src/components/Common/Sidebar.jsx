@@ -26,19 +26,19 @@ const Sidebar = ({
 
   return (
     <aside className={`sidebar-shell flex flex-col h-full ${className}`}>
-      <div className="p-3 md:p-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="h-10 w-10 rounded-xl surface-strong flex items-center justify-center">
-            <SparklesIcon className="h-5 w-5 text-[var(--accent)]" />
-          </div>
-          {!collapsed && (
+      <div className={`p-3 md:p-4 flex items-center gap-2 ${collapsed ? 'justify-center' : 'justify-between'}`}>
+        {!collapsed && (
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="h-10 w-10 rounded-xl surface-strong flex items-center justify-center">
+              <SparklesIcon className="h-5 w-5 text-[var(--accent)]" />
+            </div>
             <div className="min-w-0">
               <p className="text-xs text-secondary uppercase tracking-wider">
                 Conversations
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <button
           onClick={() => {

@@ -4,6 +4,83 @@ import { chatService } from '../services/chatService'
 
 export const ChatContext = createContext(null)
 const ACTIVE_CONVERSATION_STORAGE_KEY = 'activeConversationId'
+const CONVERSATION_TITLE_CACHE_KEY = 'conversationTitleCache'
+
+const isPlaceholderConversationTitle = (title) =>
+  !title || title.trim() === '' || title === 'New Conversation'
+
+const readConversationTitleCache = () => {
+  try {
+    const raw = localStorage.getItem(CONVERSATION_TITLE_CACHE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const writeConversationTitleCache = (cache) => {
+  try {
+    localStorage.setItem(CONVERSATION_TITLE_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+    // Ignore storage write failures
+  }
+}
+
+const cacheConversationTitle = (conversationId, title) => {
+  if (!conversationId || isPlaceholderConversationTitle(title)) return
+  const cache = readConversationTitleCache()
+  if (cache[conversationId] === title) return
+  cache[conversationId] = title
+  writeConversationTitleCache(cache)
+}
+
+const removeConversationTitleFromCache = (conversationId) => {
+  if (!conversationId) return
+  const cache = readConversationTitleCache()
+  if (!(conversationId in cache)) return
+  delete cache[conversationId]
+  writeConversationTitleCache(cache)
+}
+
+const applyCachedConversationTitles = (conversations = []) => {
+  const cache = readConversationTitleCache()
+  let cacheChanged = false
+
+  const merged = conversations.map((conv) => {
+    if (!conv?.id) return conv
+
+    if (isPlaceholderConversationTitle(conv.title) && cache[conv.id]) {
+      return { ...conv, title: cache[conv.id] }
+    }
+
+    if (!isPlaceholderConversationTitle(conv.title) && cache[conv.id] !== conv.title) {
+      cache[conv.id] = conv.title
+      cacheChanged = true
+    }
+
+    return conv
+  })
+
+  if (cacheChanged) {
+    writeConversationTitleCache(cache)
+  }
+
+  return merged
+}
+
+const deriveConversationTitle = (content) => {
+  const cleaned = (content || '').trim().replace(/\s+/g, ' ')
+  if (!cleaned) return 'New Conversation'
+
+  const maxLength = 60
+  if (cleaned.length <= maxLength) return cleaned
+
+  const truncated = cleaned.slice(0, maxLength)
+  const lastSpace = truncated.lastIndexOf(' ')
+  const readable = lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated
+  return `${readable}...`
+}
 
 export const ChatProvider = ({ children }) => {
   const [conversations, setConversations] = useState([])
@@ -15,8 +92,9 @@ export const ChatProvider = ({ children }) => {
   const loadConversations = useCallback(async () => {
     try {
       const data = await chatService.getConversations()
-      setConversations(data)
-      return data
+      const hydrated = applyCachedConversationTitles(data)
+      setConversations(hydrated)
+      return hydrated
     } catch (err) {
       console.error('Failed to load conversations:', err)
       return []
@@ -26,6 +104,9 @@ export const ChatProvider = ({ children }) => {
   const createConversation = useCallback(async (title = null) => {
     try {
       const data = await chatService.createConversation(title)
+      if (data?.id && !isPlaceholderConversationTitle(data.title)) {
+        cacheConversationTitle(data.id, data.title)
+      }
       setConversations(prev => [data, ...prev])
       setCurrentConversation(data)
       setMessages([])
@@ -70,6 +151,8 @@ export const ChatProvider = ({ children }) => {
       if (localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY) === conversationId) {
         localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY)
       }
+
+      removeConversationTitleFromCache(conversationId)
       
       console.log('✅ Conversation and all memories deleted')
     } catch (err) {
@@ -86,6 +169,8 @@ export const ChatProvider = ({ children }) => {
 
     const conversationId = activeConversation.id
     const nextTurnNumber = (activeConversation.turn_count || 0) + 1
+    const defaultFirstTitle = deriveConversationTitle(content)
+    let resolvedConversationTitle = activeConversation.title
 
     setIsLoading(true)
     setStreamingMessage('')
@@ -139,6 +224,13 @@ export const ChatProvider = ({ children }) => {
         // Add final assistant message
         const assistantCreatedAt = response?.message?.created_at || new Date().toISOString()
         setStreamingMessage('')
+        const returnedTitle = response?.conversation?.title
+        const nextConversationTitle =
+          returnedTitle ||
+          ((activeConversation.turn_count || 0) === 0
+            ? defaultFirstTitle
+            : activeConversation.title)
+        resolvedConversationTitle = nextConversationTitle
         setMessages(prev => [...prev, {
           id: Date.now() + 1,
           role: 'assistant',
@@ -147,10 +239,22 @@ export const ChatProvider = ({ children }) => {
           created_at: assistantCreatedAt,
           active_memories: response.memory_metadata?.active_memories || []
         }])
+
+        setCurrentConversation(prev => {
+          if (!prev || prev.id !== conversationId) return prev
+          return { ...prev, title: nextConversationTitle }
+        })
       } else {
         // Non-streaming response
         const response = await chatService.sendMessage(conversationId, content)
         const assistantCreatedAt = response?.message?.created_at || new Date().toISOString()
+        const returnedTitle = response?.conversation?.title
+        const nextConversationTitle =
+          returnedTitle ||
+          ((activeConversation.turn_count || 0) === 0
+            ? defaultFirstTitle
+            : activeConversation.title)
+        resolvedConversationTitle = nextConversationTitle
         setMessages(prev => [...prev, {
           id: response.message.id,
           role: 'assistant',
@@ -159,14 +263,29 @@ export const ChatProvider = ({ children }) => {
           created_at: assistantCreatedAt,
           active_memories: response.memory_metadata?.active_memories || []
         }])
+
+        setCurrentConversation(prev => {
+          if (!prev || prev.id !== conversationId) return prev
+          return { ...prev, title: nextConversationTitle }
+        })
+      }
+
+      if (!isPlaceholderConversationTitle(resolvedConversationTitle)) {
+        cacheConversationTitle(conversationId, resolvedConversationTitle)
       }
 
       // Update conversation turn count
       setCurrentConversation(prev => {
         if (!prev || prev.id !== conversationId) return prev
         const nowIso = new Date().toISOString()
+        const shouldSetTitle =
+          (prev.turn_count || 0) === 0 &&
+          (!prev.title || prev.title === 'New Conversation')
         return {
           ...prev,
+          title: shouldSetTitle
+            ? defaultFirstTitle
+            : (resolvedConversationTitle || prev.title),
           turn_count: (prev.turn_count || 0) + 1,
           updated_at: nowIso
         }
@@ -176,13 +295,27 @@ export const ChatProvider = ({ children }) => {
       setConversations(prev => {
         const nowIso = new Date().toISOString()
         const exists = prev.some(conv => conv.id === conversationId)
+        const preferredTitle = !isPlaceholderConversationTitle(resolvedConversationTitle)
+          ? resolvedConversationTitle
+          : defaultFirstTitle
         if (!exists) {
-          return [{ ...activeConversation, turn_count: 1, updated_at: nowIso }, ...prev]
+          return [{ ...activeConversation, title: preferredTitle, turn_count: 1, updated_at: nowIso }, ...prev]
         }
 
         return prev.map(conv =>
           conv.id === conversationId
-            ? { ...conv, turn_count: (conv.turn_count || 0) + 1, updated_at: nowIso }
+            ? {
+                ...conv,
+                title: !isPlaceholderConversationTitle(resolvedConversationTitle)
+                  ? resolvedConversationTitle
+                  : (
+                    (conv.turn_count || 0) === 0 && isPlaceholderConversationTitle(conv.title)
+                      ? defaultFirstTitle
+                      : conv.title
+                  ),
+                turn_count: (conv.turn_count || 0) + 1,
+                updated_at: nowIso
+              }
             : conv
         )
       })

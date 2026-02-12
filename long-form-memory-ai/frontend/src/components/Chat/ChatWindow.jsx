@@ -207,7 +207,7 @@ const ChatWindow = () => {
         onToggleCollapse={handleToggleSidebar}
         collapsed={isSidebarCollapsed}
         user={user}
-        className={`fixed inset-y-0 left-0 z-50 transition-transform duration-200 lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 overflow-hidden transition-[transform,width] duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)] lg:static lg:translate-x-0 ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } ${isSidebarCollapsed ? 'lg:w-[92px]' : 'lg:w-[320px]'} w-[292px]`}
       />
